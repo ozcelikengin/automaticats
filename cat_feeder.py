@@ -1,16 +1,84 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-import sqlite3
-from datetime import datetime
-import os
+from core import CatFeederCore
+import atexit
+
+class AutomaticMonitoringFrame(ttk.LabelFrame):
+    def __init__(self, parent, core):
+        super().__init__(parent, text="Automatic Monitoring", padding="5")
+        self.core = core
+        
+        # Status labels
+        ttk.Label(self, text="Current Food Weight:").grid(row=0, column=0, padx=5)
+        self.weight_label = ttk.Label(self, text="N/A")
+        self.weight_label.grid(row=0, column=1, padx=5)
+        
+        ttk.Label(self, text="Water Level:").grid(row=1, column=0, padx=5)
+        self.water_label = ttk.Label(self, text="N/A")
+        self.water_label.grid(row=1, column=1, padx=5)
+        
+        # Control buttons
+        self.feed_button = ttk.Button(
+            self, text="Dispense Food (50g)",
+            command=self.trigger_feeding
+        )
+        self.feed_button.grid(row=2, column=0, columnspan=2, pady=5)
+        
+        # Cat identification
+        self.identify_button = ttk.Button(
+            self, text="Identify Cat",
+            command=self.identify_cat
+        )
+        self.identify_button.grid(row=3, column=0, columnspan=2, pady=5)
+        
+        if not core.has_hardware:
+            ttk.Label(
+                self, text="Running in simulation mode",
+                foreground="orange"
+            ).grid(row=4, column=0, columnspan=2)
+            
+            # Disable hardware buttons
+            self.feed_button['state'] = 'disabled'
+            self.identify_button['state'] = 'disabled'
+        
+        self.update_status()
+    
+    def trigger_feeding(self):
+        result = self.core.trigger_feeding(50.0)  # 50g default portion
+        if result['success']:
+            messagebox.showinfo("Success", "Feeding triggered successfully")
+        else:
+            messagebox.showerror("Error", result['message'])
+    
+    def identify_cat(self):
+        result = self.core.identify_cat()
+        if result['success']:
+            messagebox.showinfo(
+                "Cat Identified",
+                f"Detected cat: {result['cat_name']}\n"
+                f"Confidence: {result['confidence']:.1%}"
+            )
+        else:
+            messagebox.showerror("Error", result['message'])
+    
+    def update_status(self):
+        status = self.core.get_hardware_status()
+        self.weight_label.config(
+            text=f"{status['food_weight']:.1f}g"
+        )
+        self.water_label.config(
+            text=f"{status['water_level']:.1f}%"
+        )
+        self.after(1000, self.update_status)
 
 class CatFeederApp:
     def __init__(self, root):
         self.root = root
         self.root.title("AutomatiCats Feeder")
         
-        # Initialize database
-        self.init_database()
+        # Initialize core functionality
+        self.core = CatFeederCore()
+        atexit.register(self.cleanup)
         
         # Create main frame
         self.main_frame = ttk.Frame(root, padding="10")
@@ -25,25 +93,20 @@ class CatFeederApp:
         # Stats section
         self.create_stats_section()
         
+        # Hardware monitoring section
+        self.monitoring_frame = AutomaticMonitoringFrame(
+            self.main_frame, self.core
+        )
+        self.monitoring_frame.grid(
+            row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5
+        )
+        
         # Load existing cats
         self.load_cats()
-
-    def init_database(self):
-        with sqlite3.connect('cat_feeder.db') as conn:
-            c = conn.cursor()
-            # Create cats table
-            c.execute('''CREATE TABLE IF NOT EXISTS cats
-                        (id INTEGER PRIMARY KEY, name TEXT UNIQUE)''')
-            
-            # Create feeding_logs table
-            c.execute('''CREATE TABLE IF NOT EXISTS feeding_logs
-                        (id INTEGER PRIMARY KEY,
-                         cat_id INTEGER,
-                         timestamp DATETIME,
-                         amount REAL,
-                         food_type TEXT,
-                         FOREIGN KEY (cat_id) REFERENCES cats(id))''')
-            conn.commit()
+    
+    def cleanup(self):
+        """Clean up resources when the application closes."""
+        self.core.cleanup()
 
     def create_cat_management(self):
         # Cat Management Frame
@@ -99,83 +162,72 @@ class CatFeederApp:
         if not name:
             messagebox.showerror("Error", "Please enter a cat name")
             return
-            
-        try:
-            with sqlite3.connect('cat_feeder.db') as conn:
-                c = conn.cursor()
-                c.execute("INSERT INTO cats (name) VALUES (?)", (name,))
-                conn.commit()
-                
+        
+        result = self.core.add_cat(name)
+        if result['success']:
             self.cat_name_var.set("")
             self.load_cats()
-            messagebox.showinfo("Success", f"Cat {name} added successfully!")
-        except sqlite3.IntegrityError:
-            messagebox.showerror("Error", f"Cat {name} already exists!")
+            messagebox.showinfo("Success", result['message'])
+        else:
+            messagebox.showerror("Error", result['message'])
 
     def load_cats(self):
-        with sqlite3.connect('cat_feeder.db') as conn:
-            c = conn.cursor()
-            c.execute("SELECT name FROM cats")
-            cats = [row[0] for row in c.fetchall()]
-            self.cat_combo['values'] = cats
-            
+        cats = self.core.get_cats()
+        self.cat_combo['values'] = [cat['name'] for cat in cats]
         self.update_stats()
 
     def log_feeding(self):
-        cat = self.selected_cat.get()
+        cat_name = self.selected_cat.get()
+        if not cat_name:
+            messagebox.showerror("Error", "Please select a cat")
+            return
+            
         try:
             amount = float(self.amount_var.get())
         except ValueError:
             messagebox.showerror("Error", "Please enter a valid amount")
             return
-            
-        food_type = self.food_type_var.get()
         
-        if not cat:
-            messagebox.showerror("Error", "Please select a cat")
+        # Find cat ID
+        cats = self.core.get_cats()
+        cat_id = next((cat['id'] for cat in cats if cat['name'] == cat_name), None)
+        if cat_id is None:
+            messagebox.showerror("Error", "Selected cat not found")
             return
-            
-        with sqlite3.connect('cat_feeder.db') as conn:
-            c = conn.cursor()
-            c.execute("SELECT id FROM cats WHERE name=?", (cat,))
-            cat_id = c.fetchone()[0]
-            
-            c.execute("""INSERT INTO feeding_logs 
-                        (cat_id, timestamp, amount, food_type)
-                        VALUES (?, ?, ?, ?)""",
-                     (cat_id, datetime.now(), amount, food_type))
-            conn.commit()
-            
-        self.amount_var.set("")
-        self.update_stats()
-        messagebox.showinfo("Success", "Feeding logged successfully!")
+        
+        result = self.core.log_feeding(
+            cat_id,
+            amount,
+            self.food_type_var.get()
+        )
+        
+        if result['success']:
+            self.amount_var.set("")
+            self.update_stats()
+            messagebox.showinfo("Success", result['message'])
+        else:
+            messagebox.showerror("Error", result['message'])
 
     def update_stats(self):
-        with sqlite3.connect('cat_feeder.db') as conn:
-            c = conn.cursor()
-            c.execute("""
-                SELECT c.name,
-                       COUNT(*) as feeding_count,
-                       SUM(amount) as total_amount,
-                       MAX(timestamp) as last_feeding
-                FROM cats c
-                LEFT JOIN feeding_logs fl ON c.id = fl.cat_id
-                GROUP BY c.name
-            """)
-            stats = c.fetchall()
-            
+        stats = self.core.get_feeding_stats()
+        
         self.stats_text.delete(1.0, tk.END)
         self.stats_text.insert(tk.END, "Feeding Statistics:\n\n")
         
-        for name, count, total, last in stats:
-            count = count if count else 0
-            total = total if total else 0
-            last = last if last else "Never"
-            self.stats_text.insert(tk.END, 
-                f"Cat: {name}\n"
-                f"Total Feedings: {count}\n"
-                f"Total Amount: {total:.1f}g\n"
-                f"Last Feeding: {last}\n\n")
+        for stat in stats:
+            self.stats_text.insert(tk.END,
+                f"Cat: {stat['name']}\n"
+                f"Total Feedings: {stat['feeding_count']}\n"
+                f"Total Amount: {stat['total_amount']:.1f}g\n"
+                f"Last Feeding: {stat['last_feeding']}\n\n")
+
+def main():
+    root = tk.Tk()
+    app = CatFeederApp(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
 
 class AutomaticMonitoringFrame(ttk.LabelFrame):
     def __init__(self, parent, hardware_monitor):
