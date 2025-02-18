@@ -1,0 +1,18 @@
+# Basic GUI and database
+tkinter>=8.6
+
+# Hardware support (Raspberry Pi)
+RPi.GPIO>=0.7.0
+hx711>=1.1.0
+picamera>=1.13
+pillow>=9.0.0
+
+# Web interface
+flask>=2.0.0
+flask-cors>=3.0.0
+
+# Computer vision and machine learning
+torch>=1.10.0
+torchvision>=0.11.0
+opencv-python>=4.5.0
+numpy>=1.21.0
