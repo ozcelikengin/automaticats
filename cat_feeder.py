@@ -177,10 +177,100 @@ class CatFeederApp:
                 f"Total Amount: {total:.1f}g\n"
                 f"Last Feeding: {last}\n\n")
 
+class AutomaticMonitoringFrame(ttk.LabelFrame):
+    def __init__(self, parent, hardware_monitor):
+        super().__init__(parent, text="Automatic Monitoring", padding="5")
+        self.hardware_monitor = hardware_monitor
+        
+        # Status labels
+        ttk.Label(self, text="Current Food Weight:").grid(row=0, column=0, padx=5)
+        self.weight_label = ttk.Label(self, text="N/A")
+        self.weight_label.grid(row=0, column=1, padx=5)
+        
+        ttk.Label(self, text="Water Level:").grid(row=1, column=0, padx=5)
+        self.water_label = ttk.Label(self, text="N/A")
+        self.water_label.grid(row=1, column=1, padx=5)
+        
+        # Control buttons
+        self.monitor_var = tk.BooleanVar(value=False)
+        self.toggle_button = ttk.Checkbutton(
+            self, text="Enable Automatic Monitoring",
+            variable=self.monitor_var, command=self.toggle_monitoring
+        )
+        self.toggle_button.grid(row=2, column=0, columnspan=2, pady=5)
+        
+        if not hardware_monitor.HARDWARE_AVAILABLE:
+            ttk.Label(
+                self, text="Running in simulation mode",
+                foreground="orange"
+            ).grid(row=3, column=0, columnspan=2)
+        
+        self.update_status()
+    
+    def toggle_monitoring(self):
+        if self.monitor_var.get():
+            self.hardware_monitor.start()
+        else:
+            self.hardware_monitor.stop()
+    
+    def update_status(self):
+        if self.monitor_var.get():
+            status = self.hardware_monitor.get_current_status()
+            self.weight_label.config(
+                text=f"{status['food_weight']:.1f}g"
+            )
+            self.water_label.config(
+                text=f"{status['water_level']:.1f}%"
+            )
+        self.after(1000, self.update_status)
+
+class CatFeederApp:
+    def __init__(self, root, hardware_monitor=None):
+        self.root = root
+        self.root.title("AutomatiCats Feeder")
+        
+        # Initialize database
+        self.init_database()
+        
+        # Create main frame
+        self.main_frame = ttk.Frame(root, padding="10")
+        self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Cat management section
+        self.create_cat_management()
+        
+        # Feeding log section
+        self.create_feeding_log()
+        
+        # Stats section
+        self.create_stats_section()
+        
+        # Hardware monitoring section (if available)
+        if hardware_monitor:
+            self.monitoring_frame = AutomaticMonitoringFrame(
+                self.main_frame, hardware_monitor
+            )
+            self.monitoring_frame.grid(
+                row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5
+            )
+        
+        # Load existing cats
+        self.load_cats()
+
 def main():
+    try:
+        from hardware_monitor import HardwareMonitor
+        hardware_monitor = HardwareMonitor()
+    except ImportError:
+        print("Hardware monitoring not available")
+        hardware_monitor = None
+    
     root = tk.Tk()
-    app = CatFeederApp(root)
+    app = CatFeederApp(root, hardware_monitor)
     root.mainloop()
+    
+    if hardware_monitor:
+        hardware_monitor.stop()
 
 if __name__ == "__main__":
     main()

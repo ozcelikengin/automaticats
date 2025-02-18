@@ -1,5 +1,10 @@
 # Basic GUI and database
 tkinter>=8.6
-# For future Raspberry Pi implementation
-# RPi.GPIO>=0.7.0
-# hx711>=1.1.0
+
+# Hardware support (Raspberry Pi)
+RPi.GPIO>=0.7.0
+hx711>=1.1.0
+
+# Optional: for future web interface
+# flask>=2.0.0
+# flask-cors>=3.0.0
