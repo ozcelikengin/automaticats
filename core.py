@@ -3,6 +3,7 @@ from datetime import datetime
 import logging
 from typing import Optional, Dict, Any, List
 import json
+import os
 
 class CatFeederCore:
     def __init__(self, db_path: str = 'cat_feeder.db'):
@@ -10,16 +11,19 @@ class CatFeederCore:
         self.setup_logging()
         self.init_database()
         
-        # Try to import hardware support
-        try:
-            from hardware_monitor import HardwareMonitor
-            self.hardware = HardwareMonitor(db_path)
-            self.hardware.start()
-            self.has_hardware = True
-        except ImportError:
-            self.hardware = None
-            self.has_hardware = False
-            self.logger.info("Running without hardware support")
+        # Initialize hardware support
+        self.hardware = None
+        self.has_hardware = False
+        
+        # Only try to import hardware if not running in simulation mode
+        if os.environ.get('AUTOMATICATS_SIMULATION') != '1':
+            try:
+                from hardware_monitor import HardwareMonitor
+                self.hardware = HardwareMonitor(db_path)
+                self.hardware.start()
+                self.has_hardware = True
+            except (ImportError, Exception) as e:
+                self.logger.info(f"Running without hardware support: {str(e)}")
     
     def setup_logging(self):
         self.logger = logging.getLogger('CatFeederCore')

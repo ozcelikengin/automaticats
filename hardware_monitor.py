@@ -5,42 +5,52 @@ import threading
 import json
 import logging
 from typing import Optional, Dict, Any
+HARDWARE_AVAILABLE = False
 try:
     import RPi.GPIO as GPIO
     from hx711 import HX711
     import picamera
+    HARDWARE_AVAILABLE = True
+except ImportError:
+    pass
+
+# Optional ML components
+ML_AVAILABLE = False
+try:
     import cv2
     import numpy as np
     import torch
     import torch.nn as nn
     import torchvision.transforms as transforms
     from PIL import Image
-    HARDWARE_AVAILABLE = True
-except ImportError:
-    HARDWARE_AVAILABLE = False
     
-# Simple CNN for cat recognition
-class CatRecognitionModel(nn.Module):
-    def __init__(self, num_cats):
-        super().__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 32, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(32, 64, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(64, 128, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2)
-        )
-        self.classifier = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(128 * 80 * 60, 512),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(512, num_cats)
-        )
+    # Simple CNN for cat recognition
+    class CatRecognitionModel(nn.Module):
+        def __init__(self, num_cats):
+            super().__init__()
+            self.features = nn.Sequential(
+                nn.Conv2d(3, 32, 3, padding=1),
+                nn.ReLU(),
+                nn.MaxPool2d(2, 2),
+                nn.Conv2d(32, 64, 3, padding=1),
+                nn.ReLU(),
+                nn.MaxPool2d(2, 2),
+                nn.Conv2d(64, 128, 3, padding=1),
+                nn.ReLU(),
+                nn.MaxPool2d(2, 2)
+            )
+            self.classifier = nn.Sequential(
+                nn.Flatten(),
+                nn.Linear(128 * 80 * 60, 512),
+                nn.ReLU(),
+                nn.Dropout(0.5),
+                nn.Linear(512, num_cats)
+            )
+    ML_AVAILABLE = True
+except ImportError:
+    class CatRecognitionModel:
+        def __init__(self, *args, **kwargs):
+            raise NotImplementedError("ML dependencies not available")
     
 class SensorConfig:
     # HX711 pins
