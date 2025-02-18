@@ -1,0 +1,5 @@
+# Basic GUI and database
+tkinter>=8.6
+# For future Raspberry Pi implementation
+# RPi.GPIO>=0.7.0
+# hx711>=1.1.0
