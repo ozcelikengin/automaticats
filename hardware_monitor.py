@@ -8,9 +8,39 @@ from typing import Optional, Dict, Any
 try:
     import RPi.GPIO as GPIO
     from hx711 import HX711
+    import picamera
+    import cv2
+    import numpy as np
+    import torch
+    import torch.nn as nn
+    import torchvision.transforms as transforms
+    from PIL import Image
     HARDWARE_AVAILABLE = True
 except ImportError:
     HARDWARE_AVAILABLE = False
+    
+# Simple CNN for cat recognition
+class CatRecognitionModel(nn.Module):
+    def __init__(self, num_cats):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(32, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(64, 128, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2)
+        )
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(128 * 80 * 60, 512),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(512, num_cats)
+        )
     
 class SensorConfig:
     # HX711 pins
@@ -20,6 +50,15 @@ class SensorConfig:
     # Water level sensor pins
     WATER_TRIG_PIN = 23
     WATER_ECHO_PIN = 24
+    
+    # Automatic feeder pins
+    FEEDER_MOTOR_PIN = 17
+    FEEDER_SENSOR_PIN = 27
+    
+    # Camera settings
+    CAMERA_RESOLUTION = (640, 480)
+    CAMERA_FRAMERATE = 30
+    MODEL_PATH = 'cat_recognition_model.pth'  # Path to the trained model
     
     # Calibration values
     WEIGHT_REFERENCE = 100  # Reference weight in grams
@@ -45,8 +84,13 @@ class HardwareMonitor:
         if HARDWARE_AVAILABLE:
             self.setup_gpio()
             self.setup_weight_sensor()
+            self.setup_camera()
+            self.setup_feeder()
+            self.load_recognition_model()
         else:
             self.logger.warning("Hardware libraries not available - running in simulation mode")
+            
+        self.cat_names = self.load_cat_names()
     
     def setup_logging(self):
         self.logger = logging.getLogger('HardwareMonitor')
@@ -60,6 +104,12 @@ class HardwareMonitor:
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(self.config.WATER_TRIG_PIN, GPIO.OUT)
         GPIO.setup(self.config.WATER_ECHO_PIN, GPIO.IN)
+        GPIO.setup(self.config.FEEDER_MOTOR_PIN, GPIO.OUT)
+        GPIO.setup(self.config.FEEDER_SENSOR_PIN, GPIO.IN)
+        
+        # Initialize PWM for motor control
+        self.feeder_pwm = GPIO.PWM(self.config.FEEDER_MOTOR_PIN, 50)  # 50 Hz
+        self.feeder_pwm.start(0)  # Start with 0% duty cycle
     
     def setup_weight_sensor(self):
         self.weight_sensor = HX711(
@@ -223,9 +273,144 @@ class HardwareMonitor:
         self.monitor_thread.daemon = True
         self.monitor_thread.start()
     
+    def setup_camera(self):
+        if not HARDWARE_AVAILABLE:
+            return
+            
+        self.camera = picamera.PiCamera()
+        self.camera.resolution = self.config.CAMERA_RESOLUTION
+        self.camera.framerate = self.config.CAMERA_FRAMERATE
+        
+    def setup_feeder(self):
+        if not HARDWARE_AVAILABLE:
+            return
+            
+        # Initialize feeder position
+        self.feeder_pwm.ChangeDutyCycle(0)
+        
+    def load_recognition_model(self):
+        if not HARDWARE_AVAILABLE:
+            return
+            
+        try:
+            # Get number of cats
+            with sqlite3.connect(self.db_path) as conn:
+                c = conn.cursor()
+                c.execute("SELECT COUNT(*) FROM cats")
+                num_cats = c.fetchone()[0]
+            
+            # Initialize model
+            self.model = CatRecognitionModel(num_cats)
+            
+            # Load trained weights if available
+            if os.path.exists(self.config.MODEL_PATH):
+                self.model.load_state_dict(torch.load(self.config.MODEL_PATH))
+                self.model.eval()
+            else:
+                self.logger.warning("No trained model found - cat recognition disabled")
+                self.model = None
+        except Exception as e:
+            self.logger.error(f"Error loading recognition model: {e}")
+            self.model = None
+    
+    def load_cat_names(self):
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute("SELECT id, name FROM cats")
+            return {row[0]: row[1] for row in c.fetchall()}
+    
+    def trigger_feeding(self, amount: float) -> bool:
+        if not HARDWARE_AVAILABLE:
+            return False
+            
+        try:
+            # Calculate motor run time based on amount
+            run_time = amount / 10.0  # Assuming 10g/second feed rate
+            
+            # Start motor
+            self.feeder_pwm.ChangeDutyCycle(100)
+            time.sleep(run_time)
+            
+            # Stop motor
+            self.feeder_pwm.ChangeDutyCycle(0)
+            
+            # Log the feeding
+            self.log_event({
+                'timestamp': datetime.now().isoformat(),
+                'event_type': 'automatic_feed',
+                'amount': amount
+            })
+            
+            return True
+        except Exception as e:
+            self.logger.error(f"Error triggering feeder: {e}")
+            return False
+    
+    def capture_image(self):
+        if not HARDWARE_AVAILABLE:
+            return None
+            
+        try:
+            # Capture to a byte stream
+            stream = io.BytesIO()
+            self.camera.capture(stream, format='jpeg')
+            stream.seek(0)
+            
+            # Convert to PIL Image
+            image = Image.open(stream)
+            return image
+        except Exception as e:
+            self.logger.error(f"Error capturing image: {e}")
+            return None
+    
+    def identify_cat(self) -> Dict[str, Any]:
+        if not HARDWARE_AVAILABLE or not self.model:
+            return {'success': False, 'error': 'Hardware or model not available'}
+            
+        try:
+            # Capture image
+            image = self.capture_image()
+            if image is None:
+                return {'success': False, 'error': 'Failed to capture image'}
+            
+            # Preprocess image
+            transform = transforms.Compose([
+                transforms.Resize((640, 480)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                  std=[0.229, 0.224, 0.225])
+            ])
+            
+            input_tensor = transform(image).unsqueeze(0)
+            
+            # Get prediction
+            with torch.no_grad():
+                output = self.model(input_tensor)
+                probabilities = torch.nn.functional.softmax(output[0], dim=0)
+                cat_id = torch.argmax(probabilities).item()
+                confidence = probabilities[cat_id].item()
+            
+            # Get cat name
+            cat_name = self.cat_names.get(cat_id + 1, "Unknown")  # +1 because SQLite IDs start at 1
+            
+            return {
+                'success': True,
+                'cat_name': cat_name,
+                'confidence': confidence,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in cat identification: {e}")
+            return {'success': False, 'error': str(e)}
+    
     def stop(self):
         self.running = False
         if HARDWARE_AVAILABLE:
+            if hasattr(self, 'camera'):
+                self.camera.close()
+            if hasattr(self, 'feeder_pwm'):
+                self.feeder_pwm.stop()
             GPIO.cleanup()
     
     def get_current_status(self) -> Dict[str, Any]:
