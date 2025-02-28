@@ -21,6 +21,7 @@ from gui.tabs.feeding_schedule_tab import FeedingScheduleTab
 from gui.tabs.water_dispenser_tab import WaterDispenserTab
 from gui.tabs.inventory_tab import InventoryTab
 from gui.tabs.statistics_tab import StatisticsTab
+from gui.tabs.ml_recommendations_tab import MLRecommendationsTab
 
 # Import database manager
 from core.db_manager import DatabaseManager
@@ -94,6 +95,7 @@ class MainWindow(QMainWindow):
         self.water_tab = WaterDispenserTab(self.db_manager)
         self.inventory_tab = InventoryTab(self.db_manager)
         self.stats_tab = StatisticsTab(self.db_manager)
+        self.ml_tab = MLRecommendationsTab(self.db_manager)
         
         # Add tabs to widget
         self.tab_widget.addTab(self.cat_tab, "Cat Management")
@@ -101,6 +103,7 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.water_tab, "Water Dispenser")
         self.tab_widget.addTab(self.inventory_tab, "Inventory")
         self.tab_widget.addTab(self.stats_tab, "Statistics")
+        self.tab_widget.addTab(self.ml_tab, "Smart Insights")
         
         main_layout.addWidget(self.tab_widget)
         
@@ -122,6 +125,19 @@ class MainWindow(QMainWindow):
         # Connect inventory updates to relevant tabs
         self.inventory_tab.food_inventory_updated.connect(self.feeding_tab.refresh_food_inventory)
         self.inventory_tab.water_inventory_updated.connect(self.water_tab.refresh_water_inventory)
+        
+        # Connect ML tab signals
+        self.cat_tab.cat_selected.connect(lambda cat_id: self.ml_tab.cat_combo.setCurrentIndex(
+            self.ml_tab.cat_combo.findData(cat_id)
+        ))
+        self.ml_tab.feedback_submitted.connect(self.handle_ml_feedback)
+    
+    def handle_ml_feedback(self, rec_id, accepted, value):
+        """Handle feedback from ML recommendations"""
+        if accepted:
+            self.statusBar.showMessage(f"Recommendation applied: {value}")
+        else:
+            self.statusBar.showMessage("Recommendation ignored")
     
     def check_inventory_levels(self):
         """Check inventory levels and show notifications if low"""
