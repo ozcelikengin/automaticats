@@ -9,14 +9,16 @@ ALTER TABLE feeding_logs ADD COLUMN leftover_amount_grams REAL;
 -- Create table for storing ML models
 CREATE TABLE ml_models (
     model_id INTEGER PRIMARY KEY,
-    model_name TEXT NOT NULL,
     model_type TEXT NOT NULL,
-    model_file_path TEXT NOT NULL,
+    model_path TEXT NOT NULL,
+    accuracy_metric TEXT,
+    training_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_active INTEGER DEFAULT 1,
+    feature_importance TEXT,
+    additional_info TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    accuracy_metric REAL,
-    version TEXT,
-    is_active INTEGER DEFAULT 1
+    version TEXT
 );
 
 -- Create table for feeding recommendations
@@ -31,7 +33,7 @@ CREATE TABLE feeding_recommendations (
     is_viewed INTEGER DEFAULT 0,
     is_applied INTEGER DEFAULT 0,
     feedback_rating INTEGER, -- 1-5 scale or NULL if not rated
-    FOREIGN KEY (cat_id) REFERENCES cats(cat_id),
+    FOREIGN KEY (cat_id) REFERENCES cats(id),
     FOREIGN KEY (model_id) REFERENCES ml_models(model_id)
 );
 
@@ -48,14 +50,15 @@ CREATE TABLE ml_feature_importance (
 -- Create table for ML training sessions
 CREATE TABLE ml_training_sessions (
     session_id INTEGER PRIMARY KEY,
-    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    completed_at TIMESTAMP,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    models_trained INTEGER,
+    success INTEGER DEFAULT 0,
     status TEXT, -- 'in_progress', 'completed', 'failed'
     error_message TEXT,
     cat_id INTEGER, -- NULL if trained on all cats
     data_points_used INTEGER,
     training_duration_seconds REAL,
-    FOREIGN KEY (cat_id) REFERENCES cats(cat_id)
+    FOREIGN KEY (cat_id) REFERENCES cats(id)
 );
 
 -- Create table for feeding patterns
@@ -67,7 +70,7 @@ CREATE TABLE feeding_patterns (
     confidence_score REAL,
     detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     is_active INTEGER DEFAULT 1,
-    FOREIGN KEY (cat_id) REFERENCES cats(cat_id)
+    FOREIGN KEY (cat_id) REFERENCES cats(id)
 );
 
 -- Create index for efficient recommendation queries

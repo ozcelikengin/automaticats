@@ -296,11 +296,11 @@ class MLRecommendationsTab(QWidget):
             self.cat_combo.addItem("All Cats", -1)
             
             # Get cats from database
-            cats = self.db_manager.get_cats()
+            cats = self.db_manager.get_all_cats()
             
             # Add cats to combo box
             for cat in cats:
-                self.cat_combo.addItem(cat['name'], cat['cat_id'])
+                self.cat_combo.addItem(cat['name'], cat['id'])
                 
         except Exception as e:
             logger.error(f"Error populating cats: {e}")
@@ -321,9 +321,9 @@ class MLRecommendationsTab(QWidget):
             # If no cat is selected or 'All Cats' is selected
             if self.selected_cat_id is None or self.selected_cat_id == -1:
                 # Get recommendations for all cats
-                cats = self.db_manager.get_cats()
+                cats = self.db_manager.get_all_cats()
                 for cat in cats:
-                    cat_recommendations = self.ml_engine.get_recommendations(cat['cat_id'])
+                    cat_recommendations = self.ml_engine.get_recommendations(cat['id'])
                     self.recommendations.extend(cat_recommendations)
             else:
                 # Get recommendations for selected cat

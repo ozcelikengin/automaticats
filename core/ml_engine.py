@@ -40,33 +40,94 @@ class MLEngine:
     def _load_models(self):
         """Load trained models if they exist"""
         try:
+            # Get the most recent models from the database
+            cursor = self.db_manager.conn.cursor()
+            
             # Time prediction model
-            time_model_path = os.path.join(self.models_dir, 'time_model.pkl')
-            if os.path.exists(time_model_path):
+            cursor.execute('''
+                SELECT model_path FROM ml_models 
+                WHERE model_type LIKE 'time_prediction%' AND is_active = 1
+                ORDER BY training_date DESC LIMIT 1
+            ''')
+            time_model_row = cursor.fetchone()
+            
+            if time_model_row and os.path.exists(time_model_row[0]):
+                time_model_path = time_model_row[0]
                 with open(time_model_path, 'rb') as f:
                     self.time_model = pickle.load(f)
-                logger.info("Loaded time prediction model")
+                logger.info(f"Loaded time prediction model from {time_model_path}")
+            else:
+                # Fallback to direct file search
+                time_model_files = [f for f in os.listdir(self.models_dir) if f.startswith('time_prediction_')]
+                if time_model_files:
+                    # Get the most recent model by sorting filenames (which contain timestamps)
+                    latest_time_model = sorted(time_model_files)[-1]
+                    time_model_path = os.path.join(self.models_dir, latest_time_model)
+                    with open(time_model_path, 'rb') as f:
+                        self.time_model = pickle.load(f)
+                    logger.info(f"Loaded time prediction model from {time_model_path}")
             
             # Portion recommendation model
-            portion_model_path = os.path.join(self.models_dir, 'portion_model.pkl')
-            if os.path.exists(portion_model_path):
+            cursor.execute('''
+                SELECT model_path FROM ml_models 
+                WHERE model_type LIKE 'portion_prediction%' AND is_active = 1
+                ORDER BY training_date DESC LIMIT 1
+            ''')
+            portion_model_row = cursor.fetchone()
+            
+            if portion_model_row and os.path.exists(portion_model_row[0]):
+                portion_model_path = portion_model_row[0]
                 with open(portion_model_path, 'rb') as f:
                     self.portion_model = pickle.load(f)
-                logger.info("Loaded portion recommendation model")
+                logger.info(f"Loaded portion recommendation model from {portion_model_path}")
+            else:
+                # Fallback to direct file search
+                portion_model_files = [f for f in os.listdir(self.models_dir) if f.startswith('portion_prediction_')]
+                if portion_model_files:
+                    # Get the most recent model
+                    latest_portion_model = sorted(portion_model_files)[-1]
+                    portion_model_path = os.path.join(self.models_dir, latest_portion_model)
+                    with open(portion_model_path, 'rb') as f:
+                        self.portion_model = pickle.load(f)
+                    logger.info(f"Loaded portion recommendation model from {portion_model_path}")
             
-            # Food preference model
-            preference_model_path = os.path.join(self.models_dir, 'preference_model.pkl')
-            if os.path.exists(preference_model_path):
-                with open(preference_model_path, 'rb') as f:
-                    self.food_preference_model = pickle.load(f)
-                logger.info("Loaded food preference model")
+            # Food preference models (multiple models, one per food type)
+            cursor.execute('''
+                SELECT model_path FROM ml_models 
+                WHERE model_type LIKE 'food_preference_%' AND is_active = 1
+                ORDER BY training_date DESC
+            ''')
+            food_model_rows = cursor.fetchall()
             
-            # Feature scaler
+            if food_model_rows:
+                # For simplicity, just use the first food preference model
+                # In a real implementation, we would load all food preference models
+                food_model_path = food_model_rows[0][0]
+                if os.path.exists(food_model_path):
+                    with open(food_model_path, 'rb') as f:
+                        self.food_preference_model = pickle.load(f)
+                    logger.info(f"Loaded food preference model from {food_model_path}")
+            else:
+                # Fallback to direct file search
+                food_model_files = [f for f in os.listdir(self.models_dir) if f.startswith('food_preference_')]
+                if food_model_files:
+                    # Get the most recent model
+                    latest_food_model = sorted(food_model_files)[-1]
+                    food_model_path = os.path.join(self.models_dir, latest_food_model)
+                    with open(food_model_path, 'rb') as f:
+                        self.food_preference_model = pickle.load(f)
+                    logger.info(f"Loaded food preference model from {food_model_path}")
+            
+            # Feature scaler - we don't have this in the database, so just use the old approach
             scaler_path = os.path.join(self.models_dir, 'scaler.pkl')
             if os.path.exists(scaler_path):
                 with open(scaler_path, 'rb') as f:
                     self.scaler = pickle.load(f)
                 logger.info("Loaded feature scaler")
+            else:
+                # If no scaler is found, create a default one
+                self.scaler = StandardScaler()
+                logger.info("Created default feature scaler")
                 
         except Exception as e:
             logger.error(f"Error loading models: {e}")
@@ -230,19 +291,10 @@ class MLEngine:
         
         try:
             # Create a feature vector for prediction
-            # In a real implementation, we would:
-            # 1. Get the cat's latest data
-            # 2. Format the features properly
-            
-            # Placeholder data for demonstration
-            features = np.array([[
-                cat_id,
-                day_of_week,
-                90.0,  # consumed_percent (average)
-                2.0,   # consumption_rate (average)
-                10.0,  # meal_duration (average)
-                1      # food_type_id (default)
-            ]])
+            # Use the same structure as in training: cat_id, day_of_week, hour
+            # For hour, we'll use the current hour as a placeholder
+            current_hour = datetime.now().hour
+            features = np.array([[cat_id, day_of_week, current_hour]])
             
             # Scale features
             features_scaled = self.scaler.transform(features)
@@ -251,12 +303,11 @@ class MLEngine:
             hour_prediction = self.time_model.predict(features_scaled)[0]
             
             # Get confidence (use feature importance and prediction variance as proxy)
-            feature_importance = self.time_model.feature_importances_
             confidence = 0.75  # Placeholder, would calculate from model internals
             
             # Convert hour to time format
             hour = int(hour_prediction)
-            minute = int((hour_prediction - hour) * 60)
+            minute = 0  # We're predicting the hour, not minutes
             predicted_time = f"{hour:02d}:{minute:02d}"
             
             return predicted_time, confidence
@@ -273,14 +324,8 @@ class MLEngine:
         
         try:
             # Create a feature vector for prediction
-            features = np.array([[
-                cat_id,
-                hour_of_day,
-                day_of_week,
-                2.0,   # consumption_rate (average)
-                90.0,  # consumed_percent (average)
-                food_type_id
-            ]])
+            # Use the same structure as in training: cat_id, day_of_week, hour
+            features = np.array([[cat_id, day_of_week, hour_of_day]])
             
             # Scale features
             features_scaled = self.scaler.transform(features)
@@ -305,12 +350,8 @@ class MLEngine:
         
         try:
             # Create a feature vector for prediction
-            features = np.array([[
-                cat_id,
-                hour_of_day,
-                day_of_week,
-                90.0  # consumed_percent (average)
-            ]])
+            # Use the same structure as in training: cat_id, day_of_week, hour
+            features = np.array([[cat_id, day_of_week, hour_of_day]])
             
             # Scale features
             features_scaled = self.scaler.transform(features)
@@ -322,8 +363,28 @@ class MLEngine:
             proba = self.food_preference_model.predict_proba(features_scaled)[0]
             confidence = max(proba)
             
-            # Get food name from ID
-            food_name = f"Food Type {int(food_type_prediction)}"  # Placeholder, would get from database
+            # Convert binary prediction to food type
+            # Since we're using a binary classifier for each food type,
+            # a prediction of 1 means the food type is recommended
+            if food_type_prediction == 1:
+                # Extract food type from model name in database
+                cursor = self.db_manager.conn.cursor()
+                cursor.execute('''
+                    SELECT additional_info FROM ml_models 
+                    WHERE model_path = ? LIMIT 1
+                ''', (os.path.abspath(self.db_manager.conn.execute(
+                    "SELECT model_path FROM ml_models WHERE model_type LIKE 'food_preference_%' LIMIT 1"
+                ).fetchone()[0]),))
+                
+                food_type_row = cursor.fetchone()
+                if food_type_row:
+                    food_name = food_type_row[0]
+                else:
+                    # Fallback to a default food type
+                    food_name = "Recommended Food"
+            else:
+                # If prediction is 0, suggest a default food type
+                food_name = "Standard Food"
             
             return food_name, confidence
             

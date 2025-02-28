@@ -116,16 +116,97 @@ def preprocess_data(df):
 
 def train_time_model(data):
     """Train a model to predict optimal feeding times."""
-    try:
-        df = data['full_data']
-        features = data['time_features']
-        
-        # Target: hour of day (classification problem)
-        X = df[features]
-        y = df['hour']
+    logger.info("Training time prediction model...")
+    
+    # Prepare features and target
+    X = data[['cat_id', 'day_of_week', 'hour']]
+    y = data['hour']  # Predict the hour of feeding
+    
+    # Split data
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    # Scale features
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+    
+    # Train model
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X_train_scaled, y_train)
+    
+    # Evaluate
+    y_pred = model.predict(X_test_scaled)
+    accuracy = accuracy_score(y_test, y_pred)
+    logger.info(f"Time prediction model trained with accuracy: {accuracy:.4f}")
+    
+    # Get feature importance
+    feature_importance = dict(zip(X.columns, model.feature_importances_))
+    
+    return {
+        'model_type': 'time_prediction',
+        'model': model,
+        'accuracy': accuracy,
+        'feature_importance': feature_importance,
+        'scaler': scaler
+    }
+
+def train_portion_model(data):
+    """Train a model to recommend portion sizes."""
+    logger.info("Training portion size prediction model...")
+    
+    # Prepare features and target
+    X = data[['cat_id', 'day_of_week', 'hour']]
+    y = data['amount']  # Predict the portion size
+    
+    # Split data
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    # Scale features
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+    
+    # Train model
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X_train_scaled, y_train)
+    
+    # Evaluate
+    y_pred = model.predict(X_test_scaled)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    logger.info(f"Portion size model trained with RMSE: {rmse:.4f}")
+    
+    # Get feature importance
+    feature_importance = dict(zip(X.columns, model.feature_importances_))
+    
+    return {
+        'model_type': 'portion_prediction',
+        'model': model,
+        'rmse': rmse,
+        'feature_importance': feature_importance,
+        'scaler': scaler
+    }
+
+def train_food_preference_model(data):
+    """Train models to predict food preferences."""
+    logger.info("Training food preference prediction models...")
+    
+    # Prepare features
+    X = data[['cat_id', 'day_of_week', 'hour']]
+    
+    # Scale features once for all models
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    
+    # Train a model for each food type
+    food_types = ['Dry Food', 'Wet Food', 'Treats']
+    models = {}
+    
+    for food_type in food_types:
+        # Create binary target: 1 if this food type was chosen, 0 otherwise
+        y = (data['food_type'] == food_type).astype(int)
         
         # Split data
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
         
         # Train model
         model = RandomForestClassifier(n_estimators=100, random_state=42)
@@ -134,143 +215,57 @@ def train_time_model(data):
         # Evaluate
         y_pred = model.predict(X_test)
         accuracy = accuracy_score(y_test, y_pred)
+        logger.info(f"Food preference model for {food_type} trained with accuracy: {accuracy:.4f}")
         
         # Get feature importance
-        feature_importance = dict(zip(features, model.feature_importances_))
+        feature_importance = dict(zip(X.columns, model.feature_importances_))
         
-        logger.info(f"Time prediction model trained with accuracy: {accuracy:.4f}")
-        
-        return {
+        # Store model info
+        models[food_type] = {
             'model': model,
             'accuracy': accuracy,
-            'feature_importance': feature_importance,
-            'model_type': 'time_prediction'
+            'feature_importance': feature_importance
         }
     
-    except Exception as e:
-        logger.error(f"Error training time model: {e}")
-        return None
+    return {
+        'model_type': 'food_preference',
+        'models': models,
+        'scaler': scaler
+    }
 
-def train_portion_model(data):
-    """Train a model to predict optimal portion sizes."""
-    try:
-        df = data['full_data']
-        features = data['portion_features']
-        
-        # Target: amount (regression problem)
-        X = df[features]
-        y = df['amount']
-        
-        # Split data
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        
-        # Train model
-        model = RandomForestRegressor(n_estimators=100, random_state=42)
-        model.fit(X_train, y_train)
-        
-        # Evaluate
-        y_pred = model.predict(X_test)
-        mse = mean_squared_error(y_test, y_pred)
-        rmse = np.sqrt(mse)
-        
-        # Get feature importance
-        feature_importance = dict(zip(features, model.feature_importances_))
-        
-        logger.info(f"Portion size model trained with RMSE: {rmse:.4f}")
-        
-        return {
-            'model': model,
-            'rmse': rmse,
-            'feature_importance': feature_importance,
-            'model_type': 'portion_prediction'
-        }
-    
-    except Exception as e:
-        logger.error(f"Error training portion model: {e}")
-        return None
-
-def train_food_preference_model(data):
-    """Train a model to predict food preferences."""
-    try:
-        df = data['full_data']
-        features = data['food_features']
-        
-        # Target: food_type (already one-hot encoded)
-        food_type_cols = [col for col in df.columns if col.startswith('food_type_')]
-        
-        if not food_type_cols:
-            logger.warning("No food type columns found after encoding")
-            return None
-        
-        # For each food type, train a binary classifier
-        models = {}
-        
-        for food_col in food_type_cols:
-            food_name = food_col.replace('food_type_', '')
-            
-            X = df[features]
-            y = df[food_col]
-            
-            # Skip if all values are the same
-            if y.nunique() <= 1:
-                continue
-            
-            # Split data
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-            
-            # Train model
-            model = RandomForestClassifier(n_estimators=100, random_state=42)
-            model.fit(X_train, y_train)
-            
-            # Evaluate
-            y_pred = model.predict(X_test)
-            accuracy = accuracy_score(y_test, y_pred)
-            f1 = f1_score(y_test, y_pred, average='weighted')
-            
-            # Get feature importance
-            feature_importance = dict(zip(features, model.feature_importances_))
-            
-            models[food_name] = {
-                'model': model,
-                'accuracy': accuracy,
-                'f1_score': f1,
-                'feature_importance': feature_importance
-            }
-            
-            logger.info(f"Food preference model for {food_name} trained with accuracy: {accuracy:.4f}")
-        
-        return {
-            'models': models,
-            'model_type': 'food_preference'
-        }
-    
-    except Exception as e:
-        logger.error(f"Error training food preference model: {e}")
-        return None
-
-def save_models(db_manager, models_dir, models):
+def save_models(db_manager, models_dir, models, debug_mode=False, sample_size=200):
     """Save trained models to disk and record in database."""
+    if not os.path.exists(models_dir):
+        os.makedirs(models_dir)
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    cursor = db_manager.conn.cursor()
+    feeding_logs = []  # Default empty list
+    
     try:
-        # Ensure models directory exists
-        os.makedirs(models_dir, exist_ok=True)
-        
-        cursor = db_manager.conn.cursor()
-        
         # Check if ml_models table exists
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ml_models'")
         if not cursor.fetchone():
-            logger.warning("ml_models table not found, skipping database recording")
-            return
+            logger.warning("ml_models table does not exist, creating it...")
+            # Create the table if it doesn't exist
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS ml_models (
+                    model_id INTEGER PRIMARY KEY,
+                    model_type TEXT NOT NULL,
+                    model_path TEXT NOT NULL,
+                    accuracy_metric TEXT,
+                    training_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_active INTEGER DEFAULT 1,
+                    feature_importance TEXT,
+                    additional_info TEXT
+                )
+            ''')
         
+        # Save each model
         for model_info in models:
-            if not model_info:
-                continue
-                
             model_type = model_info['model_type']
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             
             if model_type == 'time_prediction' or model_type == 'portion_prediction':
-                # Save single model
                 model = model_info['model']
                 model_path = os.path.join(models_dir, f"{model_type}_{timestamp}.pkl")
                 
@@ -334,15 +329,24 @@ def save_models(db_manager, models_dir, models):
                     
                     logger.info(f"Saved {model_type} model for {food_name} to {model_path}")
         
+        # Save the scaler
+        if 'scaler' in model_info:
+            scaler = model_info['scaler']
+            scaler_path = os.path.join(models_dir, 'scaler.pkl')
+            with open(scaler_path, 'wb') as f:
+                pickle.dump(scaler, f)
+            logger.info(f"Saved feature scaler to {scaler_path}")
+        
         # Record training session
         cursor.execute('''
             INSERT INTO ml_training_sessions (
-                timestamp, models_trained, success
-            ) VALUES (?, ?, ?)
+                started_at, completed_at, status, data_points_used
+            ) VALUES (?, ?, ?, ?)
         ''', (
             datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            len(models),
-            1
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'completed',
+            sample_size if debug_mode else len(feeding_logs)
         ))
         
         db_manager.conn.commit()
@@ -393,9 +397,8 @@ def generate_sample_data(size=100):
     return df
 
 def main():
-    """Main function to run the ML model training script."""
+    """Main function to train ML models."""
     args = parse_arguments()
-    
     logger.info("Starting ML model training")
     
     if args.debug:
@@ -408,34 +411,30 @@ def main():
         # Get training data
         if args.debug:
             df = generate_sample_data(size=200)
+            sample_size = 200
             logger.info(f"Generated sample data with {len(df)} records")
         else:
             df = get_training_data(db_manager)
+            sample_size = len(df) if df is not None else 0
         
         if df is None or len(df) < 10:
             logger.warning("Insufficient data for training models")
             if args.debug:
                 logger.info("Using sample data instead")
                 df = generate_sample_data(size=200)
+                sample_size = 200
             else:
                 db_manager.close()
                 return
         
-        # Preprocess data
-        processed_data = preprocess_data(df)
-        if not processed_data:
-            logger.error("Failed to preprocess data")
-            db_manager.close()
-            return
-        
-        # Train models
-        time_model = train_time_model(processed_data)
-        portion_model = train_portion_model(processed_data)
-        food_model = train_food_preference_model(processed_data)
+        # Train models directly with the dataframe
+        time_model = train_time_model(df)
+        portion_model = train_portion_model(df)
+        food_model = train_food_preference_model(df)
         
         # Save models
         models_dir = os.path.join(project_root, 'data', 'models')
-        save_models(db_manager, models_dir, [time_model, portion_model, food_model])
+        save_models(db_manager, models_dir, [time_model, portion_model, food_model], args.debug, sample_size)
         
         logger.info("ML model training completed successfully")
     
