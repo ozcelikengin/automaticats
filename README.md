@@ -1,140 +1,79 @@
-# AutomatiCats - Smart Cat Feeding Monitor
+# AutomatiCats
 
-An intelligent cat feeding monitoring system that helps track your cats' eating habits. This project combines a user-friendly GUI application with future plans for hardware integration using Raspberry Pi for automated monitoring.
-
-## Overview
-
-AutomatiCats helps cat owners monitor their pets' feeding patterns by:
-- Tracking feeding times and amounts for multiple cats
-- Recording different types of food consumption
-- Providing feeding statistics and analytics
-- Future support for automated monitoring using hardware sensors
+A desktop application for managing automated cat feeders and water dispensers.
 
 ## Features
 
-### Current Features
-- 🐱 Multi-cat management system
-- 📝 Manual feeding log with amounts and food types
-- 📊 Feeding statistics per cat
-- 🕒 Timestamp tracking for all feeding events
-- 💾 Persistent storage using SQLite database
-- 🖥️ User-friendly GUI interface
-
-### Planned Features
-- ⚖️ Automatic weight monitoring using load cells
-- 💧 Water consumption tracking
-- 📱 Mobile/web interface for remote monitoring
-- 📈 Advanced analytics and graphs
-- 🔔 Feeding pattern alerts and notifications
-
-## Technical Details
-
-### Software Components
-- Python-based GUI using tkinter
-- SQLite database for data storage
-- Modular design for easy hardware integration
-
-### Database Schema
-- `cats` table: Stores cat information
-  - id (PRIMARY KEY)
-  - name (UNIQUE)
-- `feeding_logs` table: Records feeding events
-  - id (PRIMARY KEY)
-  - cat_id (FOREIGN KEY)
-  - timestamp
-  - amount
-  - food_type
+- **Cat Management**: Register and track multiple cats with profiles
+- **Feeding Schedules**: Create automated feeding schedules for each cat
+- **Water Dispensing**: Track water consumption and manage water levels
+- **Inventory Management**: Monitor food and water levels with low-level alerts
+- **Statistics**: View feeding and hydration history with insights
+- **Automated Notifications**: Receive alerts for low supplies and scheduled events
 
 ## Installation
 
-1. Clone the repository:
-```bash
-git clone https://github.com/ozcelikengin/automaticats.git
-cd automaticats
-```
+### Prerequisites
 
-2. Install required dependencies:
-```bash
-pip install tkinter
-```
+- Python 3.8 or higher
+- PyQt6
+- SQLite3
+
+### Setup
+
+1. Clone the repository:
+   ```
+   git clone https://github.com/yourusername/automaticats.git
+   cd automaticats
+   ```
+
+2. Install dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
 
 3. Run the application:
-```bash
-python cat_feeder.py
-```
+   ```
+   python main.py
+   ```
 
-## Usage Guide
+## Usage
 
-### Adding a New Cat
-1. Enter the cat's name in the "Cat Management" section
-2. Click "Add Cat"
+### Getting Started
 
-### Logging a Feeding
-1. Select the cat from the dropdown menu
-2. Enter the amount of food in grams
-3. Specify the food type
-4. Click "Log Feeding"
+1. **Add Cats**: First, add your cats in the "Cat Management" tab with names, weights, and optional photos
+2. **Set Up Food Inventory**: Go to the "Inventory" tab to add the types of food you use
+3. **Create Feeding Schedules**: In the "Feeding Schedule" tab, create feeding routines for each cat
+4. **Monitor**: Check the "Statistics" tab to monitor consumption patterns
 
-### Viewing Statistics
-1. The stats section shows per-cat feeding information
-2. Click "Refresh Stats" to update the display
-3. View total feedings, amounts, and last feeding times
+### Key Functions
 
-## Future Hardware Implementation
+- **Manual Feeding**: Use the "Feed Now" button to log manual feedings
+- **Refill Supplies**: Update inventory levels when you refill food or water
+- **Track Consumption**: Monitor how much each cat eats and drinks
+- **Manage Schedules**: Easily enable/disable feeding schedules as needed
 
-### Required Components
-1. Raspberry Pi (3 or 4)
-2. Load Cell Components:
-   - HX711 load cell amplifier
-   - Weight sensor (>5kg capacity)
-   - Connection wires
-3. Water Monitoring:
-   - Water level sensor
-   - Flow meter
-   - ADC converter
+## Project Structure
 
-### Planned Sensor Integration
-```
-Raspberry Pi
-├── Food Monitoring
-│   ├── HX711 amplifier
-│   └── Load cell sensor
-└── Water Monitoring
-    ├── Level sensor
-    └── Flow meter
-```
+- `core/`: Core functionality and database management
+- `gui/`: User interface components
+- `data/`: Storage for database and cat photos
+- `logs/`: Application logs
 
-### Hardware Features
-1. Food Bowl Monitoring:
-   - Real-time weight measurements
-   - Automatic feeding detection
-   - Food level alerts
+## Development
 
-2. Water Dispenser:
-   - Water level monitoring
-   - Consumption tracking
-   - Refill notifications
+This project follows Agile/Scrum methodology with the following planned sprints:
 
-## Contributing
-
-Contributions are welcome! Here's how you can help:
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+1. **Sprint 1**: Core architecture and database setup
+2. **Sprint 2**: Basic UI and feeding functionality
+3. **Sprint 3**: Notification system and multi-cat support
+4. **Sprint 4**: Statistics, testing, and finalization
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Contact
-
-- GitHub: [@ozcelikengin](https://github.com/ozcelikengin)
-- Project Link: [https://github.com/ozcelikengin/automaticats](https://github.com/ozcelikengin/automaticats)
-
 ## Acknowledgments
 
-- Thanks to all contributors
-- Inspired by the need for better pet feeding monitoring
-- Special thanks to our feline friends for testing
+- Developed for all cat owners who want to ensure their feline friends are well-fed and hydrated
+- Built with PyQt6 for a responsive, cross-platform desktop experience 
